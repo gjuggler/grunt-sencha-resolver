@@ -29,7 +29,6 @@
     "test": "grunt test"
   },
   "dependencies": {
-    "phantomjs": "~1.9.0"
   },
   "devDependencies": {
     "grunt-contrib-jshint": "~0.1.1",
