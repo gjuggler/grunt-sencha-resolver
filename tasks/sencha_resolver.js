@@ -16,68 +16,50 @@ module.exports = function(grunt) {
     var options = this.options({
       // URL to load
       url: 'http://127.0.0.1',
-      // Should we remove Ext(-all,-debug etc.).js library from the list?
-      skipSenchaCore: false,
-      // Object that map urls matching patterns (using regexp).
-      urlMappings: false
+      configProperty: 'sencha_files'
     });
 
-    grunt.log.debug("Using options:");
-    grunt.log.debug();
-    grunt.log.debug("url:\t" + options.url);
-    grunt.log.debug("skipSenchaCore:\t" + options.skipSenchaCore);
-    if (!options.urlMappings) {
-      grunt.log.debug("urlMappings:\tNo");
-    }
-    else {
-      grunt.log.debug("urlMappings:");
-      for (var key in options.urlMappings) {
-        grunt.log.debug("\t" + key + " = " + options.urlMappings[key]);
-      }
+    // Determine which executable to run.
+    var phantomPath;
+    if (process.platform === 'linux') {
+      phantomPath = __dirname+'/../phantomjs_linux64';
+    } else if (process.platform === 'darwin') {
+      phantomPath = __dirname+'/../phantomjs_osx';
     }
 
     var spawn_options = {
-      // PhantomJS binary path.
-      cmd: './node_modules/phantomjs/lib/phantom/bin/phantomjs',
+      cmd: phantomPath,
       grunt: false,
-      args: [__dirname+'/dep/resolve_project.js', options.url, options.jsUrl, options.jsLocal],
+      args: [__dirname+'/dep/resolve_project.js', options.url]
     };
 
     function doneFunction(error, result, code) {
       if (!error && !code) {
-        grunt.log.ok();
-        grunt.log.debug("PhantomJS terminated and returned this files (mapped to -->):");
-        grunt.log.debug();
-
-        var mapped = result.stdout;
-        for (var i in options.urlMappings) {
-          var regex = new RegExp(i, 'g');
-          mapped = mapped.replace(regex, options.urlMappings[i]);
-        }
-        var urls = String(result.stdout).split('\n');
-        var files = String(mapped).split('\n');
-        var finalList = [];
-        for (var idx in urls) {
-          if (options.skipSenchaCore) {
-            if (files[idx].search("(ext((-all)*(-(debug|dev))*(-w-comments)*)\\.js)") > 0) {
-              continue;
+        // Take the console-logged URLs and process them (if the
+        // Gruntfile config has a processFn config param)
+        var urls = String(result.stdout).split('\n');        
+        var processedUrls = [];
+        var tmpUrl;
+        for (var i=0; i < urls.length; i++) { 
+          if (options.processFn) {
+            tmpUrl = options.processFn.apply(null, [urls[i], grunt]);
+            if (tmpUrl !== null && tmpUrl !== undefined) {
+              processedUrls.push(tmpUrl);
             }
           }
-          finalList.push(files[idx]);
-          grunt.log.debug(urls[idx]);
-          grunt.log.debug('\t--> ' + files[idx]);
         }
-        grunt.log.debug();
-        grunt.log.write("Number of files: " + finalList.length);
-        grunt.config.set("sencha_project", finalList);
-        grunt.log.write("\n"+JSON.stringify(grunt.config.get('sencha_project')));
+
+        // Set this list of URLs to the user-specified grunt config
+        // property.
+        grunt.config.set(options.configProperty, processedUrls);
+        grunt.log.ok('Put '+processedUrls.length+' files into config "'+options.configProperty+'"');
       } else {
-        grunt.log.errorlns("Code: " + code + " An error appened when calling phantomjs. " +
-          JSON.stringify(result));
+        grunt.log.errorlns("Code: " + code + " An error appened when calling phantomjs.");
       }
       done();
     }
-    grunt.log.write("Spawning PhantomJS...");
+
+    grunt.log.write("Spawning PhantomJS and capturing Ext.Loader info...\n");
     var t = grunt.util.spawn(spawn_options, doneFunction);
   });
 

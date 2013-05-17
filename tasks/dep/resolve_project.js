@@ -1,15 +1,9 @@
 /* global phantom,document,Ext */
 
 var system = require('system'),
-    page = require('webpage').create();
+page = require('webpage').create();
 
-// Viewport size is defined for the screenshot (see below)
-// page.viewportSize = {
-//   width: 1280,
-//   height: 800
-// };
-
-page.onError = function (msg, trace) {
+page.onError = function(msg, trace) {
   console.log('Error: ' + msg + " Trace: " + JSON.stringify(trace, undefined, 4));
   phantom.exit(-1);
 };
@@ -21,45 +15,67 @@ if (system.args.length < 1) {
 
 var url = system.args[1];
 
-page.open(url, function (status) {
+page.onConsoleMessage = function(msg) {
+  // Uncomment this for debugging the target page.
+
+  //console.log(msg);
+};
+
+page.onCallback = function(data) {
+  // Note: this is a special way we allow the Ext page to tell Phantom
+  // that it's ready and everything is loaded. We use phantom's
+  // callback function, and add a call from within the target
+  // page. This looks like:
+
+  //  if (typeof window.callPhantom === 'function') {
+  //    window.callPhantom({ loaded: true });
+  //  }
+
+  if (data && data.loaded === true) {
+    // The target page is loaded, now add a short timeout and start
+    // collecting the sources.
+    setTimeout(function() {
+      collectLoadedScripts();
+      phantom.exit();
+    },
+    500);
+  }
+};
+
+var collectScriptTags = function() {
+  var scriptSources = page.evaluate(function() {
+    var buffer = [];
+    var scripts = document.getElementsByTagName('script');
+    for (var idx in scripts) {
+      if (scripts[idx].src) {
+        buffer.push(scripts[idx].src);
+      }
+    }
+    return buffer;
+  });
+  scriptSources.forEach(function(x) {
+    console.log(x);
+  });
+};
+
+var collectLoadedScripts = function() {
+  var loaderSources = page.evaluate(function() {
+    var buffer = [];
+    for (var cls in Ext.Loader.history) {
+      buffer.push(Ext.Loader.getPath(Ext.Loader.history[cls]));
+    }
+    return buffer;
+  });
+  loaderSources.forEach(function(x) {
+    console.log(x);
+  });
+};
+
+page.open(url, function(status) {
   if (status !== 'success') {
     console.log('FAIL to load the address');
     phantom.exit(-1);
   } else {
-    // Grab url of all included scripts BEFORE ExtJS starts to load dynamic ones
-    var src = page.evaluate(function () {
-      var src = [];
-      var scripts = document.getElementsByTagName('script');
-      for (var idx in scripts) {
-        if (scripts[idx].src) {
-          src.push(scripts[idx].src);
-        }
-      }
-      return src;
-    });
-
-    // Wait few seconds for ExtJS to load dependencies
-    setTimeout(function() {
-      var src2 = page.evaluate(function () {
-        var src2 = [];
-        for (var cls in Ext.Loader.history) {
-          src2.push(Ext.Loader.getPath(Ext.Loader.history[cls]));
-        }
-        return src2;
-      });
-      // Concat dynamically loaded script files to static ones
-      src = src2.concat(src);
-
-      // Uncomment to take a screenshot of webpage as a minimal 'proof' of page integrity :)
-      // page.render('proof.png');
-
-      // ToDo: check if some dynamic files were already loaded and inserted into the DOM...
-
-      // We need to use the console.log to communicate with the parent process (GruntJS)
-      for (var i in src) {
-        console.log(src[i]);
-      }
-      phantom.exit();
-    }, 7000);
+    collectScriptTags();
   }
 });
