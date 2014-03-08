@@ -49,6 +49,10 @@ module.exports = function(grunt) {
           }
         }
 
+        if (options.postProcessFn) {
+          processedUrls = options.postProcessFn.apply(null, [processedUrls, grunt]);
+        }
+
         // Set this list of URLs to the user-specified grunt config
         // property.
         grunt.config.set(options.configProperty, processedUrls);
